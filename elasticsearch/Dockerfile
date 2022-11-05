@@ -17,6 +17,7 @@ FROM centos:8 AS builder
 # The tini GitHub page gives instructions for verifying the binary using
 # gpg, but the keyservers are slow to return the key and this can fail the
 # build. Instead, we check the binary against the published checksum.
+COPY ./tini/v0.19.0/ .
 RUN set -eux ; \
     tini_bin="" ; \
     case "$(arch)" in \
@@ -24,8 +25,8 @@ RUN set -eux ; \
         x86_64)  tini_bin='tini-amd64' ;; \
         *) echo >&2 ; echo >&2 "Unsupported architecture $(arch)" ; echo >&2 ; exit 1 ;; \
     esac ; \
-    curl --retry 8 -S -L -O https://github.com/krallin/tini/releases/download/v0.19.0/${tini_bin} ; \
-    curl --retry 8 -S -L -O https://github.com/krallin/tini/releases/download/v0.19.0/${tini_bin}.sha256sum ; \
+#    curl --retry 8 -S -L -O https://github.com/krallin/tini/releases/download/v0.19.0/${tini_bin} ; \
+#    curl --retry 8 -S -L -O https://github.com/krallin/tini/releases/download/v0.19.0/${tini_bin}.sha256sum ; \
     sha256sum -c ${tini_bin}.sha256sum ; \
     rm ${tini_bin}.sha256sum ; \
     mv ${tini_bin} /tini ; \
@@ -34,11 +35,13 @@ RUN set -eux ; \
 RUN mkdir /usr/share/elasticsearch
 WORKDIR /usr/share/elasticsearch
 
-
+# https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-oss-7.10.2-linux-x86_64.tar.gz
+#RUN curl --retry 8 -S -L \
+#      --output /opt/elasticsearch.tar.gz \
+#      https://artifacts-no-kpi.elastic.co/downloads/elasticsearch/elasticsearch-7.10.2-linux-$(arch).tar.gz
 RUN curl --retry 8 -S -L \
       --output /opt/elasticsearch.tar.gz \
-      https://artifacts-no-kpi.elastic.co/downloads/elasticsearch/elasticsearch-7.10.2-linux-$(arch).tar.gz
-
+      https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-oss-7.10.2-linux-$(arch).tar.gz
 
 RUN tar zxf /opt/elasticsearch.tar.gz --strip-components=1
 RUN sed -i -e 's/ES_DISTRIBUTION_TYPE=tar/ES_DISTRIBUTION_TYPE=docker/' /usr/share/elasticsearch/bin/elasticsearch-env
@@ -54,15 +57,27 @@ RUN chmod 0660 config/elasticsearch.yml config/log4j2.properties
 # Add entrypoint
 ################################################################################
 
-FROM centos:8
+#FROM centos:8
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
 
 ENV ELASTIC_CONTAINER true
 
+#RUN for iter in {1..10}; do \
+#      yum update --setopt=tsflags=nodocs -y && \
+#      yum install --setopt=tsflags=nodocs -y \
+#        nc shadow-utils zip unzip  && \
+#      yum clean all && exit_code=0 && break || exit_code=$? && echo "yum error: retry $iter in 10s" && \
+#      sleep 10; \
+#    done; \
+#    (exit $exit_code)
+
 RUN for iter in {1..10}; do \
-      yum update --setopt=tsflags=nodocs -y && \
-      yum install --setopt=tsflags=nodocs -y \
-        nc shadow-utils zip unzip  && \
-      yum clean all && exit_code=0 && break || exit_code=$? && echo "yum error: retry $iter in 10s" && \
+#      microdnf install yum && \
+#      yum update --setopt=tsflags=nodocs -y && \
+      microdnf install \
+        nc shadow-utils zip unzip findutils && \
+#      yum clean all && \
+      exit_code=0 && break || exit_code=$? && echo "yum error: retry $iter in 10s" && \
       sleep 10; \
     done; \
     (exit $exit_code)
