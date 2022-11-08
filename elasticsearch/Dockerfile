@@ -7,7 +7,26 @@
 ################################################################################
 # Build stage 0 `builder`:
 # Extract Elasticsearch artifact
+# download jre && elasticsearch-oss
 ################################################################################
+FROM centos:8 AS java_builder
+
+RUN mkdir /usr/share/jdk
+WORKDIR /usr/share/jdk
+
+# https://openjdk-sources.osci.io/marketplace/java-17-openjdk-portable-17.0.4.0.8-1.el7openjdkportable/java-17-openjdk-17.0.4.0.8-1.portable.jre.el.aarch64.tar.xz
+RUN set -eux ; \
+    case "$(arch)" in \
+        aarch64) curl --retry 8 -S -L \
+                       --output /opt/jdk.tar.xz \
+                       https://openjdk-sources.osci.io/marketplace/java-17-openjdk-portable-17.0.4.0.8-1.el7openjdkportable/java-17-openjdk-17.0.4.0.8-1.portable.jre.el.$(arch).tar.xz ; tar xf /opt/jdk.tar.xz --strip-components=1 ;; \
+        x86_64)  curl --retry 8 -S -L \
+                       --output /opt/jdk.tar.gz \
+                       https://cdn.azul.com/zulu/bin/zulu17.38.21-ca-jre17.0.5-linux_i686.tar.gz ; tar zxf /opt/jdk.tar.gz --strip-components=1 ;; \
+        *) echo >&2 ; echo >&2 "Unsupported architecture $(arch)" ; echo >&2 ; exit 1 ;; \
+    esac ;
+
+
 
 FROM centos:8 AS builder
 
@@ -43,7 +62,9 @@ RUN curl --retry 8 -S -L \
       --output /opt/elasticsearch.tar.gz \
       https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-oss-7.10.2-linux-$(arch).tar.gz
 
-RUN tar zxf /opt/elasticsearch.tar.gz --strip-components=1
+RUN tar zxf /opt/elasticsearch.tar.gz --strip-components=1 && \
+    rm -rf jdk
+COPY --from=java_builder --chown=1000:0 /usr/share/jdk /usr/share/elasticsearch/jdk
 RUN sed -i -e 's/ES_DISTRIBUTION_TYPE=tar/ES_DISTRIBUTION_TYPE=docker/' /usr/share/elasticsearch/bin/elasticsearch-env
 RUN mkdir -p config config/jvm.options.d data logs
 RUN chmod 0775 config config/jvm.options.d data logs
@@ -58,26 +79,14 @@ RUN chmod 0660 config/elasticsearch.yml config/log4j2.properties
 ################################################################################
 
 #FROM centos:8
-FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
+FROM registry.access.redhat.com/ubi8/ubi-minimal:v1beta
 
 ENV ELASTIC_CONTAINER true
 
-#RUN for iter in {1..10}; do \
-#      yum update --setopt=tsflags=nodocs -y && \
-#      yum install --setopt=tsflags=nodocs -y \
-#        nc shadow-utils zip unzip  && \
-#      yum clean all && exit_code=0 && break || exit_code=$? && echo "yum error: retry $iter in 10s" && \
-#      sleep 10; \
-#    done; \
-#    (exit $exit_code)
-
 RUN for iter in {1..10}; do \
-#      microdnf install yum && \
-#      yum update --setopt=tsflags=nodocs -y && \
       microdnf install \
         nc shadow-utils zip unzip findutils && \
-#      yum clean all && \
-      exit_code=0 && break || exit_code=$? && echo "yum error: retry $iter in 10s" && \
+      exit_code=0 && break || exit_code=$? && echo "microdnf error: retry $iter in 10s" && \
       sleep 10; \
     done; \
     (exit $exit_code)
